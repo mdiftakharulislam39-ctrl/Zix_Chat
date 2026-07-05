@@ -26,6 +26,19 @@
       console.log("Connected to server:", socket.id);
     });
 
+    // পুরনো মেসেজ লোড করা
+    socket.on("load_old_messages", (messages) => {
+      console.log("Loading old messages:", messages);
+      const messagesDiv = document.getElementById("messages");
+      messages.forEach((msg) => {
+        const msgEl = document.createElement("div");
+        msgEl.textContent = `${msg.sender_username}: ${msg.message_text}`;
+        messagesDiv.appendChild(msgEl);
+      });
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+
+    // নতুন মেসেজ আসলে
     socket.on("receive_message", (data) => {
       const messagesDiv = document.getElementById("messages");
       const msgEl = document.createElement("div");
