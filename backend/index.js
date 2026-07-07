@@ -2,9 +2,13 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { createClient } = require('@supabase/supabase-js');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
+app.use(express.json());
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
@@ -13,10 +17,83 @@ const supabase = createClient(
   process.env.SUPABASE_SECRET_KEY
 );
 
+const JWT_SECRET = process.env.JWT_SECRET || "zixchat_secret_key_change_later";
+
 app.get('/', (req, res) => {
   res.send('Zix_Chat server is running!');
 });
 
+// ================= REGISTER =================
+app.post('/auth/register', async (req, res) => {
+  const { username, email, password } = req.body;
+
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: 'Username, email, and password are required' });
+  }
+
+  // ইমেইল আগে থেকে আছে কিনা চেক করা
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .single();
+
+  if (existingUser) {
+    return res.status(400).json({ error: 'Email already registered' });
+  }
+
+  // পাসওয়ার্ড hash করা
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  // নতুন ইউজার তৈরি করা
+  const { data: newUser, error } = await supabase
+    .from('users')
+    .insert([{ username, email, password: hashedPassword }])
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.status(201).json({ message: 'User registered successfully', userId: newUser.id });
+});
+
+// ================= LOGIN =================
+app.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single();
+
+  if (error || !user) {
+    return res.status(400).json({ error: 'Invalid email or password' });
+  }
+
+  const passwordMatch = await bcrypt.compare(password, user.password);
+
+  if (!passwordMatch) {
+    return res.status(400).json({ error: 'Invalid email or password' });
+  }
+
+  // JWT Token তৈরি করা
+  const token = jwt.sign(
+    { userId: user.id, username: user.username },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  res.json({ message: 'Login successful', token, username: user.username });
+});
+
+// ================= SOCKET.IO (Chat) =================
 io.on('connection', async (socket) => {
   console.log('A user connected:', socket.id);
 
